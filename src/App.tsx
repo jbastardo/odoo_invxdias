@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Package, TrendingUp, Users, Calendar, AlertTriangle, ArrowUpRight, Filter, RefreshCw, Box } from 'lucide-react';
+import { Package, TrendingUp, Calendar, AlertTriangle, Filter, RefreshCw, Box } from 'lucide-react';
 import { OdooAPI } from './api/OdooAPI';
 import './App.css';
 
