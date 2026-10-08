@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000; // Respetamos el puerto que inyecta Coolify (por defecto 3000)
+const PORT = process.env.PORT || 80; // Nixpacks usually exposes 80 or 3000, we'll try to stick to standards
 
 // Configurar el Proxy hacia Odoo para evadir CORS
 // Todo lo que el frontend mande a /odoo_api, el servidor lo reenviará a Odoo sin restricciones de CORS.
@@ -30,10 +30,10 @@ app.use('/odoo_api', createProxyMiddleware({
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // Cualquier otra ruta la maneja React
-app.get(/(.*)/, (req, res) => {
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, () => {
   console.log(`Proxy server is running on port ${PORT}`);
 });
