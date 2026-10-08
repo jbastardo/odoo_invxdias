@@ -95,7 +95,7 @@ export class OdooAPI {
       [['type', '=', 'product']]
     ], {
       fields: ['id', 'name', 'qty_available', 'virtual_available', 'standard_price'],
-      limit: 100
+      limit: 0
     });
   }
 }
