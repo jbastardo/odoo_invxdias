@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Package, TrendingUp, Calendar, AlertTriangle, Filter, RefreshCw, Box } from 'lucide-react';
+import { Package, TrendingUp, Calendar, AlertTriangle, Filter, RefreshCw, Box, Bot, X, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
 import { OdooAPI } from './api/OdooAPI';
 import './App.css';
 
@@ -35,6 +35,20 @@ function App() {
   const [selectedBrand, setSelectedBrand] = useState('');
   const [selectedSupplier, setSelectedSupplier] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
+
+  // Pagination & Sorting
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortConfig, setSortConfig] = useState<{key: keyof ProcessedProduct, direction: 'asc'|'desc'} | null>(null);
+  const itemsPerPage = 15;
+
+  // AI Modal
+  const [showAIModal, setShowAIModal] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
+
+  // Reset pagination on filter change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCategory, selectedBrand, selectedSupplier, selectedStatus, periodDays]);
 
   useEffect(() => {
     fetchData();
@@ -140,16 +154,68 @@ function App() {
     });
   }, [products, suppliers, invoiceLines, periodDays]);
 
-  // --- Filtering --- //
-  const filteredData = useMemo(() => {
-    return processedData.filter(p => {
+  // --- Filtering & Sorting --- //
+  const filteredAndSortedData = useMemo(() => {
+    let result = processedData.filter(p => {
       const matchCat = selectedCategory ? p.category === selectedCategory : true;
       const matchBrand = selectedBrand ? p.brand === selectedBrand : true;
       const matchSupp = selectedSupplier ? p.supplier === selectedSupplier : true;
       const matchStatus = selectedStatus ? p.statusText === selectedStatus : true;
       return matchCat && matchBrand && matchSupp && matchStatus;
     });
-  }, [processedData, selectedCategory, selectedBrand, selectedSupplier, selectedStatus]);
+
+    if (sortConfig !== null) {
+      result.sort((a, b) => {
+        const aValue = a[sortConfig.key];
+        const bValue = b[sortConfig.key];
+        
+        if (aValue === Infinity && bValue !== Infinity) return sortConfig.direction === 'asc' ? 1 : -1;
+        if (bValue === Infinity && aValue !== Infinity) return sortConfig.direction === 'asc' ? -1 : 1;
+        
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+
+    return result;
+  }, [processedData, selectedCategory, selectedBrand, selectedSupplier, selectedStatus, sortConfig]);
+
+  // --- Pagination --- //
+  const totalPages = Math.ceil(filteredAndSortedData.length / itemsPerPage);
+  const paginatedData = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredAndSortedData.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredAndSortedData, currentPage]);
+
+  const requestSort = (key: keyof ProcessedProduct) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  // --- AI Suggestions --- //
+  const generateAISuggestions = () => {
+    // Only suggest items that have velocity > 0 and stock covers less than 30 days
+    const suggestions = filteredAndSortedData.filter(p => p.salesVelocityPerDay > 0 && p.daysOfInventory < 30).map(p => {
+      // Suggest enough to have 30 days of inventory
+      const targetStock = Math.ceil(p.salesVelocityPerDay * 30);
+      const toBuy = targetStock - p.stock;
+      return { ...p, suggestedPurchase: toBuy > 0 ? toBuy : 0 };
+    }).filter(p => p.suggestedPurchase > 0);
+    
+    // Sort by highest suggested purchase
+    suggestions.sort((a, b) => b.suggestedPurchase - a.suggestedPurchase);
+    
+    setAiSuggestions(suggestions);
+    setShowAIModal(true);
+  };
 
   // --- Unique Options for Selects --- //
   const categories = Array.from(new Set(processedData.map(p => p.category))).sort();
@@ -159,13 +225,13 @@ function App() {
 
   // --- Export to CSV --- //
   const exportToCSV = () => {
-    if (filteredData.length === 0) return;
+    if (filteredAndSortedData.length === 0) return;
     
     // Headers
     const headers = ['Producto', 'Marca', 'Categoría', 'Proveedor', `Ventas (${periodDays}d)`, 'Stock Actual', 'Días de Inv.', 'Estado'];
     
     // Rows
-    const rows = filteredData.map(p => [
+    const rows = filteredAndSortedData.map(p => [
       `"${p.name.replace(/"/g, '""')}"`,
       `"${p.brand}"`,
       `"${p.category}"`,
@@ -189,8 +255,8 @@ function App() {
   };
 
   // --- Metrics --- //
-  const totalStock = filteredData.reduce((acc, p) => acc + p.stock, 0);
-  const totalSales = filteredData.reduce((acc, p) => acc + p.salesInPeriod, 0);
+  const totalStock = filteredAndSortedData.reduce((acc, p) => acc + p.stock, 0);
+  const totalSales = filteredAndSortedData.reduce((acc, p) => acc + p.salesInPeriod, 0);
   
   // Promedio ponderado de días de inventario
   let avgDays = Infinity;
@@ -201,25 +267,25 @@ function App() {
 
   return (
     <div className="dashboard-container">
-      <nav className="sidebar">
+      <nav className="top-navbar">
         <div className="logo-container">
           <Box className="logo-icon" />
           <span className="logo-text">InvX</span>
         </div>
         <ul className="nav-links">
-          <li className="active"><TrendingUp /> Análisis Días</li>
-          <li onClick={fetchData} style={{ cursor: 'pointer', marginTop: 'auto', color: 'var(--text-secondary)' }}>
-            <RefreshCw size={18} style={{ marginRight: 8 }} /> Actualizar Datos
+          <li className="active"><TrendingUp size={18}/> Análisis Días</li>
+          <li onClick={fetchData} style={{ cursor: 'pointer', color: 'var(--text-secondary)' }}>
+            <RefreshCw size={18} /> Actualizar Datos
           </li>
         </ul>
       </nav>
 
       <main className="main-content">
-        <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <header className="header">
           <h1>Análisis de Días de Inventario</h1>
           
-          <div className="period-selector">
-            <span style={{ marginRight: '10px', fontWeight: 600 }}>Período de Ventas:</span>
+          <div className="period-selector" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontWeight: 600 }}>Período de Ventas:</span>
             <select 
               value={periodDays} 
               onChange={(e) => setPeriodDays(Number(e.target.value))}
@@ -296,33 +362,40 @@ function App() {
               </select>
               
               <button 
-                onClick={exportToCSV}
-                style={{ marginLeft: 'auto', background: 'var(--primary-color)', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
+                onClick={generateAISuggestions}
+                style={{ marginLeft: 'auto', background: 'var(--success)', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}
               >
-                📥 Exportar a Excel (CSV)
+                <Bot size={18} /> 🤖 Sugerencia de Compras (IA)
+              </button>
+              
+              <button 
+                onClick={exportToCSV}
+                style={{ background: 'var(--primary-color)', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
+              >
+                📥 Exportar CSV
               </button>
             </div>
 
             {/* Data Table */}
             <div className="data-panel">
-              <h2>Análisis Detallado por Producto</h2>
+              <h2 style={{ marginBottom: '10px' }}>Análisis Detallado por Producto ({filteredAndSortedData.length} resultados)</h2>
               <div className="table-responsive">
                 <table className="modern-table">
                   <thead>
                     <tr>
-                      <th>Producto</th>
-                      <th>Marca</th>
-                      <th>Categoría</th>
-                      <th>Proveedor</th>
-                      <th>Ventas ({periodDays}d)</th>
-                      <th>Stock Actual</th>
-                      <th>Días de Inv.</th>
-                      <th>Estado</th>
+                      <th onClick={() => requestSort('name')}>Producto <ArrowUpDown size={12}/></th>
+                      <th onClick={() => requestSort('brand')}>Marca <ArrowUpDown size={12}/></th>
+                      <th onClick={() => requestSort('category')}>Categoría <ArrowUpDown size={12}/></th>
+                      <th onClick={() => requestSort('supplier')}>Proveedor <ArrowUpDown size={12}/></th>
+                      <th onClick={() => requestSort('salesInPeriod')}>Ventas ({periodDays}d) <ArrowUpDown size={12}/></th>
+                      <th onClick={() => requestSort('stock')}>Stock <ArrowUpDown size={12}/></th>
+                      <th onClick={() => requestSort('daysOfInventory')}>Días Inv. <ArrowUpDown size={12}/></th>
+                      <th onClick={() => requestSort('statusText')}>Estado <ArrowUpDown size={12}/></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredData.length > 0 ? (
-                      filteredData.map((item) => {
+                    {paginatedData.length > 0 ? (
+                      paginatedData.map((item) => {
                         // Determinar color de alerta
                         let statusColor = 'var(--success-color)';
                         let statusText = 'Saludable';
@@ -375,10 +448,66 @@ function App() {
                   </tbody>
                 </table>
               </div>
+              
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="pagination">
+                  <span>Página {currentPage} de {totalPages}</span>
+                  <div className="pagination-controls">
+                    <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}><ChevronLeft size={16} /></button>
+                    <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)}><ChevronRight size={16} /></button>
+                  </div>
+                </div>
+              )}
             </div>
           </>
         )}
       </main>
+
+      {/* AI Modal */}
+      {showAIModal && (
+        <div className="modal-overlay" onClick={() => setShowAIModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <h2 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><Bot color="var(--primary)" /> Plan de Compras Inteligente</h2>
+              <X style={{ cursor: 'pointer' }} onClick={() => setShowAIModal(false)} />
+            </div>
+            
+            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', lineHeight: '1.5' }}>
+              Basado en los filtros actuales y las ventas de los últimos {periodDays} días, este algoritmo calcula las compras necesarias para mantener un stock de seguridad de <strong>30 días</strong>.
+            </p>
+
+            <div className="table-responsive">
+              <table className="modern-table">
+                <thead>
+                  <tr>
+                    <th>Producto</th>
+                    <th>Proveedor</th>
+                    <th>Ventas Diarias</th>
+                    <th>Stock Actual</th>
+                    <th>Sugerencia de Compra (Unid)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {aiSuggestions.length > 0 ? aiSuggestions.map(s => (
+                    <tr key={s.id}>
+                      <td><strong>{s.name}</strong></td>
+                      <td>{s.supplier}</td>
+                      <td>{s.salesVelocityPerDay.toFixed(2)}</td>
+                      <td>{s.stock}</td>
+                      <td style={{ color: 'var(--success)', fontWeight: 'bold', fontSize: '1.1em' }}>+{s.suggestedPurchase}</td>
+                    </tr>
+                  )) : (
+                    <tr>
+                      <td colSpan={5} className="empty-state">Tu inventario está sano. No hay sugerencias de compras urgentes para esta selección.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
