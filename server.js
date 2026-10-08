@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3006; // Forzado a 3006 para asegurar compatibilidad con Coolify
+const PORT = process.env.PORT || 3000; // Respetamos el puerto que inyecta Coolify (por defecto 3000)
 
 // Configurar el Proxy hacia Odoo para evadir CORS
 // Todo lo que el frontend mande a /odoo_api, el servidor lo reenviará a Odoo sin restricciones de CORS.
