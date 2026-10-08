@@ -30,7 +30,7 @@ app.use('/odoo_api', createProxyMiddleware({
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // Cualquier otra ruta la maneja React
-app.get('*', (req, res) => {
+app.get(/(.*)/, (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
