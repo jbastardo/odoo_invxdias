@@ -34,6 +34,6 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(3000, '0.0.0.0', () => {
-  console.log(`Proxy server is running on port 3000`);
+app.listen(3006, '0.0.0.0', () => {
+  console.log(`Proxy server is running on port 3006`);
 });
