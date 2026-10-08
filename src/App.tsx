@@ -73,7 +73,15 @@ function App() {
     // Map suppliers by ID
     const suppMap: Record<number, string> = {};
     suppliers.forEach((s) => {
-      suppMap[s.id] = s.name ? s.name[1] : 'Desconocido';
+      // In Odoo, partner could be in partner_id or name
+      const partner = s.partner_id || s.name;
+      if (Array.isArray(partner) && partner.length > 1) {
+        suppMap[s.id] = partner[1];
+      } else if (typeof partner === 'string') {
+        suppMap[s.id] = partner;
+      } else {
+        suppMap[s.id] = 'Desconocido';
+      }
     });
 
     // Sum sales by product_id
@@ -85,10 +93,8 @@ function App() {
 
     return products.map((p): ProcessedProduct => {
       // Find main supplier
-      let supplierName = 'Múltiples / No asignado';
+      let supplierName = 'No asignado';
       if (p.seller_ids && p.seller_ids.length > 0) {
-        // En Odoo 16 seller_ids devuelve IDs de product.supplierinfo
-        // Buscamos el nombre del primer proveedor
         supplierName = suppMap[p.seller_ids[0]] || 'Proveedor ID ' + p.seller_ids[0];
       }
 
@@ -241,12 +247,12 @@ function App() {
                   <thead>
                     <tr>
                       <th>Producto</th>
-                      <th>Categoría</th>
                       <th>Marca</th>
-                      <th>Proveedor Principal</th>
-                      <th>Stock Actual</th>
+                      <th>Categoría</th>
+                      <th>Proveedor</th>
                       <th>Ventas ({periodDays}d)</th>
-                      <th>Días de Inventario</th>
+                      <th>Stock Actual</th>
+                      <th>Días de Inv.</th>
                       <th>Estado</th>
                     </tr>
                   </thead>
@@ -262,23 +268,23 @@ function App() {
                           statusText = 'Agotado';
                         } else if (item.daysOfInventory === Infinity) {
                           statusColor = 'var(--danger-color)';
-                          statusText = 'Estancado (0 ventas)';
+                          statusText = 'Estancado';
                         } else if (item.daysOfInventory > 180) {
                           statusColor = '#f59e0b'; // Warning/Yellow
                           statusText = 'Lento (>180d)';
                         } else if (item.daysOfInventory < 15) {
                           statusColor = '#3b82f6'; // Blue
-                          statusText = 'Próx. Agotarse';
+                          statusText = 'Próx. a Agotarse';
                         }
 
                         return (
                           <tr key={item.id}>
                             <td><strong>{item.name}</strong></td>
-                            <td>{item.category}</td>
                             <td>{item.brand}</td>
+                            <td>{item.category}</td>
                             <td><span style={{ fontSize: '0.85em', color: 'var(--text-secondary)' }}>{item.supplier}</span></td>
-                            <td style={{ fontWeight: 'bold' }}>{item.stock}</td>
                             <td>{item.salesInPeriod}</td>
+                            <td style={{ fontWeight: 'bold' }}>{item.stock}</td>
                             <td style={{ fontWeight: 'bold', color: item.daysOfInventory === Infinity ? 'var(--danger-color)' : 'inherit' }}>
                               {item.daysOfInventory === Infinity ? '∞' : item.daysOfInventory}
                             </td>
