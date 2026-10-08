@@ -70,7 +70,7 @@ export class OdooAPI {
     return this.callKw('product.supplierinfo', 'search_read', [
       []
     ], {
-      fields: ['id', 'name', 'partner_id'],
+      fields: ['id', 'partner_id'],
       limit: 0
     });
   }

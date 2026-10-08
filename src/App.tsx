@@ -76,12 +76,10 @@ function App() {
     // Map suppliers by ID
     const suppMap: Record<number, string> = {};
     suppliers.forEach((s) => {
-      // In Odoo, partner could be in partner_id or name
-      const partner = s.partner_id || s.name;
+      // In Odoo 16, partner is in partner_id
+      const partner = s.partner_id;
       if (Array.isArray(partner) && partner.length > 1) {
         suppMap[s.id] = partner[1];
-      } else if (typeof partner === 'string') {
-        suppMap[s.id] = partner;
       } else {
         suppMap[s.id] = 'Desconocido';
       }
