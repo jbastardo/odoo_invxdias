@@ -14,6 +14,8 @@ interface ProcessedProduct {
   salesInPeriod: number;
   salesVelocityPerDay: number;
   daysOfInventory: number | typeof Infinity;
+  statusText: string;
+  statusColor: string;
 }
 
 function App() {
@@ -32,6 +34,7 @@ function App() {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('');
   const [selectedSupplier, setSelectedSupplier] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -106,6 +109,23 @@ function App() {
         daysOfInventory = Math.round(p.qty_available / salesVelocityPerDay);
       }
 
+      let statusColor = 'var(--success-color)';
+      let statusText = 'Saludable';
+      
+      if (p.qty_available <= 0) {
+        statusColor = 'gray';
+        statusText = 'Agotado';
+      } else if (daysOfInventory === Infinity) {
+        statusColor = 'var(--danger-color)';
+        statusText = 'Estancado';
+      } else if (daysOfInventory > 180) {
+        statusColor = '#f59e0b'; // Warning/Yellow
+        statusText = 'Lento (>180d)';
+      } else if (daysOfInventory < 15) {
+        statusColor = '#3b82f6'; // Blue
+        statusText = 'Próx. a Agotarse';
+      }
+
       return {
         id: p.id,
         name: p.display_name,
@@ -115,7 +135,9 @@ function App() {
         stock: p.qty_available || 0,
         salesInPeriod,
         salesVelocityPerDay,
-        daysOfInventory
+        daysOfInventory,
+        statusText,
+        statusColor
       };
     });
   }, [products, suppliers, invoiceLines, periodDays]);
@@ -126,14 +148,47 @@ function App() {
       const matchCat = selectedCategory ? p.category === selectedCategory : true;
       const matchBrand = selectedBrand ? p.brand === selectedBrand : true;
       const matchSupp = selectedSupplier ? p.supplier === selectedSupplier : true;
-      return matchCat && matchBrand && matchSupp;
+      const matchStatus = selectedStatus ? p.statusText === selectedStatus : true;
+      return matchCat && matchBrand && matchSupp && matchStatus;
     });
-  }, [processedData, selectedCategory, selectedBrand, selectedSupplier]);
+  }, [processedData, selectedCategory, selectedBrand, selectedSupplier, selectedStatus]);
 
   // --- Unique Options for Selects --- //
   const categories = Array.from(new Set(processedData.map(p => p.category))).sort();
   const brands = Array.from(new Set(processedData.map(p => p.brand))).sort();
   const supplierNames = Array.from(new Set(processedData.map(p => p.supplier))).sort();
+  const statuses = Array.from(new Set(processedData.map(p => p.statusText))).sort();
+
+  // --- Export to CSV --- //
+  const exportToCSV = () => {
+    if (filteredData.length === 0) return;
+    
+    // Headers
+    const headers = ['Producto', 'Marca', 'Categoría', 'Proveedor', `Ventas (${periodDays}d)`, 'Stock Actual', 'Días de Inv.', 'Estado'];
+    
+    // Rows
+    const rows = filteredData.map(p => [
+      `"${p.name.replace(/"/g, '""')}"`,
+      `"${p.brand}"`,
+      `"${p.category}"`,
+      `"${p.supplier}"`,
+      p.salesInPeriod,
+      p.stock,
+      p.daysOfInventory === Infinity ? 'Infinito' : p.daysOfInventory,
+      `"${p.statusText}"`
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `analisis_inventario_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // --- Metrics --- //
   const totalStock = filteredData.reduce((acc, p) => acc + p.stock, 0);
@@ -220,11 +275,15 @@ function App() {
             </div>
 
             {/* Filters */}
-            <div className="filters-bar" style={{ display: 'flex', gap: '15px', marginBottom: '20px', background: 'var(--surface-color)', padding: '15px', borderRadius: '12px' }}>
+            <div className="filters-bar" style={{ display: 'flex', gap: '15px', marginBottom: '20px', background: 'var(--surface-color)', padding: '15px', borderRadius: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <Filter size={18} />
                 <strong>Filtros:</strong>
               </div>
+              <select className="modern-select" value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}>
+                <option value="">Todos los Estados</option>
+                {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
               <select className="modern-select" value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}>
                 <option value="">Todas las Categorías</option>
                 {categories.map(c => <option key={c} value={c}>{c}</option>)}
@@ -237,6 +296,13 @@ function App() {
                 <option value="">Todos los Proveedores</option>
                 {supplierNames.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
+              
+              <button 
+                onClick={exportToCSV}
+                style={{ marginLeft: 'auto', background: 'var(--primary-color)', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: 600 }}
+              >
+                📥 Exportar a Excel (CSV)
+              </button>
             </div>
 
             {/* Data Table */}
